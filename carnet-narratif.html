@@ -413,7 +413,7 @@ let timer,toastTimer;
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove("show"),2600)}
 function status(t){document.getElementById("status").textContent=t}
 function collect(){document.querySelectorAll("[data-key]").forEach(e=>state.fields[e.dataset.key]=e.value)}
-function saveNow(show=false){collect();try{localStorage.setItem(STORE,JSON.stringify(state));status("✓ Enregistré");if(show)toast("✓ Carnet enregistré sur cet appareil")}catch(e){status("Stockage saturé")}}
+function saveNow(show=false){collect();try{localStorage.setItem(STORE,JSON.stringify(state));status("✓ Sauvegardé sur cet appareil");if(show)toast("✓ Carnet enregistré sur cet appareil")}catch(e){status("Stockage saturé")}}
 function autosave(){status("Modification…");clearTimeout(timer);timer=setTimeout(()=>saveNow(false),420)}
 function resetAll(){if(confirm("Effacer tout le contenu de ce carnet ?")){localStorage.removeItem(STORE);location.reload()}}
 function setRating(n,s=true){state.rating=n;document.querySelectorAll(".star").forEach(b=>b.classList.toggle("on",Number(b.dataset.star)<=n));if(s)saveNow(false)}
@@ -429,52 +429,52 @@ document.querySelectorAll(".ytrow").forEach(row=>{const i=row.querySelector(".yt
 function restore(){const raw=localStorage.getItem(STORE);if(!raw)return;try{const s=JSON.parse(raw);Object.assign(state,s);document.querySelectorAll("[data-key]").forEach(e=>{if(state.fields[e.dataset.key]!==undefined)e.value=state.fields[e.dataset.key]});Object.entries(state.images||{}).forEach(([id,src])=>{const box=document.getElementById(id);if(box&&src){box.querySelector("img").src=src;box.classList.add("has-image")}});setRating(state.rating||0,false);setMood(state.mood||0,false);document.querySelectorAll(".ytrow").forEach(refreshYT);status("✓ Travail restauré")}catch(e){}}
 function safe(s){return String(s||"").trim().replace(/[<>:"/\\|?*\x00-\x1F]/g,"").replace(/\s+/g," ")}
 function filename(){return [safe(state.fields.classe),safe(state.fields.nom||"Élève"),safe(state.fields.prenom)].filter(Boolean).join(" ")+".html"}
-function makeStandalone(){saveNow(false);const clone=document.documentElement.cloneNode(true);clone.querySelector("body").classList.add("readonly");const orig=[...document.querySelectorAll("[data-key]")],copy=[...clone.querySelectorAll("[data-key]")];orig.forEach((e,i)=>{const c=copy[i],v=state.fields[e.dataset.key]??e.value??"";if(c.tagName==="TEXTAREA")c.textContent=v;else c.setAttribute("value",v);c.setAttribute("readonly","")});clone.querySelectorAll(".upload").forEach(c=>{const src=state.images[c.id],im=c.querySelector("img");if(src&&im){im.src=src;c.classList.add("has-image")}const fi=c.querySelector('input[type=file]');if(fi)fi.remove()});clone.querySelectorAll(".star").forEach(b=>b.classList.toggle("on",Number(b.dataset.star)<=state.rating));clone.querySelectorAll(".hot").forEach(b=>b.classList.toggle("on",Number(b.dataset.mood)===state.mood));clone.querySelectorAll(".ytrow").forEach(row=>{const i=row.querySelector(".ytinput"),u=normalizeYoutubeUrl(state.fields[i.dataset.key]||"");if(u){row.classList.add("valid");i.value="✓ Lien YouTube ajouté";i.setAttribute("value","✓ Lien YouTube ajouté");const a=row.querySelector(".ytopen");a.href=u;a.style.display="block"}});clone.querySelectorAll("script").forEach(s=>s.remove());
+function makeStandalone(){saveNow(false);const clone=document.documentElement.cloneNode(true);clone.querySelector("body").classList.add("readonly");const orig=[...document.querySelectorAll("[data-key]")],copy=[...clone.querySelectorAll("[data-key]")];orig.forEach((e,i)=>{const c=copy[i],v=state.fields[e.dataset.key]??e.value??"";if(c.tagName==="TEXTAREA")c.textContent=v;else c.setAttribute("value",v);c.setAttribute("readonly","")});clone.querySelectorAll(".upload").forEach(c=>{const src=state.images[c.id],im=c.querySelector("img");if(src&&im){im.src=src;c.classList.add("has-image")}const fi=c.querySelector('input[type=file]');if(fi)fi.remove()});clone.querySelectorAll(".star").forEach(b=>b.classList.toggle("on",Number(b.dataset.star)<=state.rating));clone.querySelectorAll(".hot").forEach(b=>b.classList.toggle("on",Number(b.dataset.mood)===state.mood));clone.querySelectorAll(".ytrow").forEach(row=>{const i=row.querySelector(".ytinput"),u=normalizeYoutubeUrl(state.fields[i.dataset.key]||"");if(u){row.classList.add("valid");i.value="✓ Lien YouTube ajouté";i.setAttribute("value","✓ Lien YouTube ajouté");const a=row.querySelector(".ytopen");a.href=u;a.style.display="block"}});clone.querySelectorAll("#driveUploadForm, #driveUploadFrame").forEach(e=>e.remove());clone.querySelectorAll("script").forEach(s=>s.remove());
  const teachScript=clone.ownerDocument.createElement("script");
  teachScript.textContent=`document.querySelectorAll(".hot").forEach(function(b){b.addEventListener("click",function(){document.querySelectorAll(".hot").forEach(function(x){x.classList.remove("on")});b.classList.add("on")})});`;
  clone.querySelector("body").appendChild(teachScript);
  return"<!doctype html>\\n"+clone.outerHTML}
 function exportHtml(silent=false){const blob=new Blob([makeStandalone()],{type:"text/html;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=filename();document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1600);if(!silent)toast("✓ Carnet téléchargé")}
-function sendToDrive(){
+async function sendToDrive(){
+  if(sendToDrive.pending)return;
   saveNow(false);
-  const nom=String(state.fields.nom||"").trim();
-  const prenom=String(state.fields.prenom||"").trim();
-  const classe=String(state.fields.classe||"").trim();
-  if(!nom||!prenom||!classe){
-    toast("Renseigne d’abord ton nom, ton prénom et ta classe.");
-    return;
+  const {nom,prenom,classe}=state.fields;
+  if(!String(nom||"").trim()||!String(prenom||"").trim()||!String(classe||"").trim()){
+    toast("Renseigne d’abord ton nom, ton prénom et ta classe.");return;
   }
-
-  const btn=document.getElementById("sendButton");
+  const buttons=[document.getElementById("sendButton"),document.getElementById("sendButtonTop")].filter(Boolean);
   const notice=document.getElementById("driveNotice");
-  btn.disabled=true;
-  btn.textContent="⏳ Envoi en cours…";
-  notice.textContent="Préparation et envoi du carnet vers Google Drive…";
-
-  const form=document.getElementById("driveUploadForm");
-  form.action=APPS_SCRIPT_URL;
-  document.getElementById("driveFilename").value=filename();
-  document.getElementById("driveHtml").value=makeStandalone();
-
-  // Un formulaire vers un domaine extérieur n’est pas bloqué par CORS,
-  // contrairement à un fetch JavaScript. Le résultat est chargé dans l’iframe invisible.
-  form.submit();
-
-  // L’iframe est cross-origin : le navigateur ne permet pas de lire sa réponse.
-  // On attend simplement la fin de navigation pour confirmer que la requête a été envoyée.
-  let done=false;
-  const frame=document.getElementById("driveUploadFrame");
-  const finish=()=>{
-    if(done)return;
-    done=true;
-    btn.disabled=false;
-    btn.textContent="✓ Carnet rendu";
-    notice.textContent="✓ Carnet transmis à M. Weens.";
-    toast("✓ Carnet envoyé au professeur");
-  };
-  frame.onload=()=>setTimeout(finish,450);
-  setTimeout(finish,3500);
+  notice.setAttribute("role","status");
+  notice.setAttribute("aria-live","polite");
+  sendToDrive.pending=true;
+  buttons.forEach(b=>{b.disabled=true;b.textContent="⏳ Envoi en cours…"});
+  notice.textContent="Envoi en cours. Attends la confirmation de l’enregistrement.";
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),90000);
+  try{
+    const name=filename();
+    // Simple POST: no custom headers, no preflight, and a readable JSON receipt.
+    const body=new URLSearchParams({filename:name,html:makeStandalone()});
+    const response=await fetch(APPS_SCRIPT_URL,{method:"POST",body,signal:controller.signal,credentials:"omit",redirect:"follow"});
+    if(!response.ok)throw new Error("HTTP "+response.status);
+    const receipt=await response.json();
+    if(receipt.success!==true||typeof receipt.fileId!=="string"||!receipt.fileId.trim()||receipt.filename!==name){
+      throw new Error("Accusé de réception invalide");
+    }
+    buttons.forEach(b=>b.textContent="✓ Carnet rendu");
+    notice.textContent="✓ Carnet enregistré pour M. Weens. Référence : "+receipt.fileId+". Conserve cette référence.";
+    toast("✓ Enregistrement confirmé par Google Drive");
+  }catch(error){
+    buttons.forEach(b=>b.textContent="📨 Réessayer l’envoi");
+    notice.textContent="⚠ Enregistrement non confirmé. Il est possible que le fichier ait été reçu, mais aucune confirmation fiable n’est arrivée. Télécharge une copie de ton carnet avant de fermer cette page et signale ce message à M. Weens.";
+    toast("Enregistrement non confirmé : garde une copie de ton travail.");
+  }finally{
+    clearTimeout(timeout);
+    sendToDrive.pending=false;
+    buttons.forEach(b=>b.disabled=false);
+  }
 }
+
 restore();
 </script>
 </body>
